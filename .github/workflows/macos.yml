@@ -7,9 +7,9 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [macos-13, macos-14]
+        os: [macos-15-intel, macos-14]
         include:
-          - os: macos-13
+          - os: macos-15-intel
             arch: x64
           - os: macos-14
             arch: arm64
@@ -40,11 +40,11 @@ jobs:
           fi
           echo "ART_IMGIO_NAME=ART-imageio-bin-macOS-${{ matrix.arch }}" >> $GITHUB_ENV
 
-      - if: ${{ matrix.os == 'macos-13' }}
+      - if: ${{ matrix.os == 'macos-15-intel' }}
         name: Install MacPorts x64
         run: |          
-          wget https://github.com/macports/macports-base/releases/download/v2.10.5/MacPorts-2.10.5-13-Ventura.pkg
-          sudo installer -pkg MacPorts-2.10.5-13-Ventura.pkg -target /
+          wget https://github.com/macports/macports-base/releases/download/v2.11.6/MacPorts-2.11.6-15-Sequoia.pkg
+          sudo installer -pkg MacPorts-2.11.6-15-Sequoia.pkg -target /
 
       - if: ${{ matrix.os == 'macos-14' }}
         name: Install MacPorts arm64

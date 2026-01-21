@@ -5,7 +5,17 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-22.04-arm]
+        include:
+          - os: ubuntu-22.04
+            arch: x86_64
+          - os: ubuntu-22.04-arm
+            arch: arm64
+      fail-fast: false
+    
+    runs-on: ${{ matrix.os }}
 
     permissions:
       contents: write
@@ -24,7 +34,11 @@ jobs:
           else
               echo "ART_IMGIO_VERSION=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
           fi
-          echo "ART_IMGIO_NAME=ART-imageio-bin-linux64" >> $GITHUB_ENV
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+              echo "ART_IMGIO_NAME=ART-imageio-bin-linux64" >> $GITHUB_ENV
+          else
+              echo "ART_IMGIO_NAME=ART-imageio-bin-linux-aarch64" >> $GITHUB_ENV
+          fi
 
       - name: Install base dependencies
         run: |
@@ -49,14 +63,24 @@ jobs:
             yasm \
             wget
           sudo python3 -m pip install meson
-          wget https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-linux.zip
-          unzip ninja-linux.zip
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+              ninja_zip=ninja-linux.zip
+          else
+              ninja_zip=ninja-linux-aarch64.zip
+          fi
+          wget https://github.com/ninja-build/ninja/releases/download/v1.12.1/${ninja_zip}
+          unzip ${ninja_zip}
           sudo mv ninja /usr/local/bin
 
-      - name: Install standalone Python x64
+      - name: Install standalone Python
         run: |
-          wget https://github.com/astral-sh/python-build-standalone/releases/download/20250612/cpython-3.12.11+20250612-x86_64_v2-unknown-linux-gnu-pgo+lto-full.tar.zst
-          zstdcat cpython-3.12.11+20250612-x86_64_v2-unknown-linux-gnu-pgo+lto-full.tar.zst | tar xv
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+              wget https://github.com/astral-sh/python-build-standalone/releases/download/20250612/cpython-3.12.11+20250612-x86_64_v2-unknown-linux-gnu-pgo+lto-full.tar.zst
+              zstdcat cpython-3.12.11+20250612-x86_64_v2-unknown-linux-gnu-pgo+lto-full.tar.zst | tar xv
+          else
+              wget https://github.com/astral-sh/python-build-standalone/releases/download/20250612/cpython-3.12.11+20250612-aarch64-unknown-linux-gnu-lto-full.tar.zst
+              zstdcat https://github.com/astral-sh/python-build-standalone/releases/download/20250612/cpython-3.12.11+20250612-aarch64-unknown-linux-gnu-lto-full.tar.zst | tar xv
+          fi
 
       - name: Create Python virtualenv
         run: |
@@ -107,6 +131,11 @@ jobs:
 
       - name: Build jxl binaries
         run: |
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+              arch=x86_64
+          else
+              arch=aarch64
+          fi
           JXL_VERSION='0.11.1'
           . venv/bin/activate
           mkdir jxl
@@ -131,13 +160,18 @@ jobs:
             -DJPEGXL_ENABLE_SJPEG=0 \
             -DJPEGXL_BUNDLE_LIBPNG=1 \
             -DJPEGXL_ENABLE_JPEGLI_LIBJPEG=0 \
-            -DJPEG_LIBRARY_RELEASE=/usr/lib/x86_64-linux-gnu/libjpeg.a \
+            -DJPEG_LIBRARY_RELEASE=/usr/lib/${arch}-linux-gnu/libjpeg.a \
             ../libjxl-${JXL_VERSION}
           make -j$(nproc)
           cp -a tools/cjxl tools/djxl tools/jxlinfo ../../${ART_IMGIO_NAME}
           
       - name: Build avif binaries
         run: |
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+              arch=x86_64
+          else
+              arch=aarch64
+          fi
           AVIF_VERSION='1.1.1'
           . venv/bin/activate
           mkdir avif
@@ -158,10 +192,10 @@ jobs:
             -DAVIF_LIBYUV=SYSTEM \
             -DAVIF_CODEC_AOM_DECODE=1 \
             -DAVIF_CODEC_AOM_ENCODE=1 \
-            -DLIBYUV_LIBRARY=/usr/lib/x86_64-linux-gnu/libyuv.a \
-            -DJPEG_LIBRARY_RELEASE=/usr/lib/x86_64-linux-gnu/libjpeg.a \
-            -DPNG_LIBRARY_RELEASE=/usr/lib/x86_64-linux-gnu/libpng.a \
-            -DZLIB_LIBRARY_RELEASE=/usr/lib/x86_64-linux-gnu/libz.a \
+            -DLIBYUV_LIBRARY=/usr/lib/${arch}-linux-gnu/libyuv.a \
+            -DJPEG_LIBRARY_RELEASE=/usr/lib/${arch}-linux-gnu/libjpeg.a \
+            -DPNG_LIBRARY_RELEASE=/usr/lib/${arch}-linux-gnu/libpng.a \
+            -DZLIB_LIBRARY_RELEASE=/usr/lib/${arch}-linux-gnu/libz.a \
             ../libavif-${AVIF_VERSION}
           make -j$(nproc)
           cp -a avifenc ../../${ART_IMGIO_NAME}

@@ -79,7 +79,7 @@ jobs:
               zstdcat cpython-3.12.11+20250612-x86_64_v2-unknown-linux-gnu-pgo+lto-full.tar.zst | tar xv
           else
               wget https://github.com/astral-sh/python-build-standalone/releases/download/20250612/cpython-3.12.11+20250612-aarch64-unknown-linux-gnu-lto-full.tar.zst
-              zstdcat https://github.com/astral-sh/python-build-standalone/releases/download/20250612/cpython-3.12.11+20250612-aarch64-unknown-linux-gnu-lto-full.tar.zst | tar xv
+              zstdcat cpython-3.12.11+20250612-aarch64-unknown-linux-gnu-lto-full.tar.zst | tar xv
           fi
 
       - name: Create Python virtualenv

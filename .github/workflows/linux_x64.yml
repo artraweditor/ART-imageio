@@ -211,6 +211,7 @@ jobs:
             -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXE_LINKER_FLAGS=-static \
+            -DCMAKE_CXX_FLAGS=-D__LITTLE_ENDIAN__ \
             ../gpr
           ninja
           cp -a source/app/gpr_tools/gpr_tools ../../${ART_IMGIO_NAME}

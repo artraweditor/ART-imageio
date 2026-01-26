@@ -50,6 +50,9 @@ def getopts():
     p.add_argument('-t', '--transfer', choices=['pq', 'hlg', 'rec709'],
                    default='pq')
     p.add_argument('--pq-eetf', type=float, nargs=2)
+    p.add_argument('--pq-oetf-plain', action='store_true', default=True)
+    p.add_argument('--pq-oetf-strict', action='store_false',
+                   dest='pq_oetf_plain')
     return p.parse_args()
 
 ACES_AP0_coords = ((0.735, 0.265),
@@ -187,9 +190,11 @@ def pq(a, inv):
     return res
 
 
-def srgb(a, inv):
+def srgb(a, inv, clip=True):
     if not inv:
-        a = numpy.fmax(numpy.fmin(a, 1.0), 0.0)
+        a = numpy.fmax(a, 0.0)
+        if clip:
+            a = numpy.fmin(a, 1.0)
         return numpy.where(a <= 0.0031308,
                            12.92 * a,
                            1.055 * numpy.power(a, 1.0/2.4)-0.055)
@@ -328,15 +333,21 @@ def pq_eetf(data, black, peak):
     return data
 
 
-def pq_oetf(data):
+def pq_oetf(data, plain):
     # ITU-R BT.2390-10, section 5.3.1
-    gain = 5.0 # empirical
     shape = data.shape
     data = data.reshape(-1)
-    E = data * (gain / 100.0)
-    E1 = rec709(E * 59.5208, False, False)
-    scaling = 1.0 / 10000.0
-    F_D = numpy.clip((100.0 * scaling) * rec1886(E1, True), 0.0, 1.0)
+    if plain:
+        E1 = data
+        scaling = 2.0 / 10000.0
+        inv = lambda x: x
+    else:
+        gain = 5.0 # empirical
+        E = data * (gain / 100.0)
+        E1 = rec709(E * 59.5208, False, False)
+        scaling = 1.0 / 10000.0
+        inv = lambda x: rec1886(x, True)
+    F_D = numpy.clip((100.0 * scaling) * inv(E1), 0.0, 1.0)
     res = pq(F_D, False)
     res = res.reshape(shape)
     return res
@@ -369,7 +380,7 @@ def write(opts):
     if opts.transfer == 'hlg':
         data = hlg_oetf(data)
     elif opts.transfer == 'pq':
-        data = pq_oetf(data)
+        data = pq_oetf(data, opts.pq_oetf_plain)
         if opts.pq_eetf:
             black, peak = min(*opts.pq_eetf), max(*opts.pq_eetf)
             data = pq_eetf(data, black, peak)

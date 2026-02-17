@@ -82,7 +82,7 @@ jobs:
           wget https://github.com/astral-sh/python-build-standalone/releases/download/20250115/cpython-3.12.8+20250115-aarch64-apple-darwin-pgo+lto-full.tar.zst
           zstdcat cpython-3.12.8+20250115-aarch64-apple-darwin-pgo+lto-full.tar.zst | tar xv
           
-      - if: ${{ matrix.os == 'macos-13' }}
+      - if: ${{ matrix.os == 'macos-15-intel' }}
         name: Install standalone Python x64
         run: |
           export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH

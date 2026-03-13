@@ -142,7 +142,7 @@ jobs:
 
       - name: Build jxl binaries
         run: |
-          JXL_VERSION='0.11.1'
+          JXL_VERSION='0.11.2'
           export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
           . venv/bin/activate
           mkdir jxl

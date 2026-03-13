@@ -136,7 +136,7 @@ jobs:
           else
               arch=aarch64
           fi
-          JXL_VERSION='0.11.1'
+          JXL_VERSION='0.11.2'
           . venv/bin/activate
           mkdir jxl
           cd jxl

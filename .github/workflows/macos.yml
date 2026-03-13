@@ -216,6 +216,14 @@ jobs:
           make -j$(nproc)
           cp -a source/app/gpr_tools/gpr_tools ../../${ART_IMGIO_NAME}
 
+      - if: ${{ matrix.os == 'macos-14' }}
+        name: Get dnglab binary
+        run: |
+          DNGLAB_VERSION=0.7.2
+          wget https://github.com/dnglab/dnglab/releases/download/v${DNGLAB_VERSION}/dnglab-macos-arm64_v${DNGLAB_VERSION}.zip
+          unzip dnglab-macos-arm64_v${DNGLAB_VERSION}.zip
+          cp dnglab ../../${ART_IMGIO_NAME}
+
       - name: Create bundle
         run: |
           export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH

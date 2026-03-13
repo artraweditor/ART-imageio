@@ -216,6 +216,19 @@ jobs:
           ninja
           cp -a source/app/gpr_tools/gpr_tools ../../${ART_IMGIO_NAME}
 
+      - name: Get dnglab binary
+        run: |
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+              arch=x64
+          else
+              arch=aarch64
+          fi
+          DNGLAB_VERSION=0.7.2
+          wget https://github.com/dnglab/dnglab/releases/download/v${DNGLAB_VERSION}/dnglab_linux_${arch}
+          mv dnglab_linux_${arch} dnglab
+          chmod a+x dnglab
+          cp dnglab ../../${ART_IMGIO_NAME}
+          
       - name: Create bundle
         run: |
           ARTIFACT_NAME=${ART_IMGIO_NAME}.tar.gz

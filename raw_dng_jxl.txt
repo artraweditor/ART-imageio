@@ -1,0 +1,16 @@
+# -*- conf -*-
+#
+# support for reading DNG files with JPEG XL compression
+#
+# Requirements:
+#
+# - dnglab version >= 0.7.2 from https://github.com/dnglab/dnglab
+#
+[ART RAWImageIO]
+Extension=dng
+ReadCommand=python3 ./raw/load_dnglab_raw.py
+
+[Metadata]
+Exif.SubImage1.NewSubfileType=Primary image
+Exif.SubImage1.Compression=re:([(]52546[)])|(JPEG XL)
+

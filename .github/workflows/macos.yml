@@ -168,6 +168,7 @@ jobs:
             -DJPEGXL_BUNDLE_LIBPNG=1 \
             -DJPEGXL_ENABLE_JPEGLI_LIBJPEG=0 \
             -DJPEG_LIBRARY_RELEASE=/opt/local/lib/libjpeg.a \
+            -DZLIB_LIBRARY_RELEASE=/opt/local/lib/libz.a \
             ../libjxl-${JXL_VERSION}
           make -j$(nproc)
           cp -a tools/cjxl tools/djxl tools/jxlinfo ../../${ART_IMGIO_NAME}

@@ -136,7 +136,7 @@ jobs:
           else
               arch=aarch64
           fi
-          JXL_VERSION='0.11.2'
+          JXL_VERSION='0.12.0'
           . venv/bin/activate
           mkdir jxl
           cd jxl
@@ -172,7 +172,7 @@ jobs:
           else
               arch=aarch64
           fi
-          AVIF_VERSION='1.1.1'
+          AVIF_VERSION='1.4.2'
           . venv/bin/activate
           mkdir avif
           cd avif

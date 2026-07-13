@@ -142,7 +142,7 @@ jobs:
 
       - name: Build jxl binaries
         run: |
-          JXL_VERSION='0.11.2'
+          JXL_VERSION='0.12.0'
           export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
           . venv/bin/activate
           mkdir jxl
@@ -175,7 +175,7 @@ jobs:
           
       - name: Build avif binaries
         run: |
-          AVIF_VERSION='1.1.1'
+          AVIF_VERSION='1.4.2'
           export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
           . venv/bin/activate
           mkdir avif

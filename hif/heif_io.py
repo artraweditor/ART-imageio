@@ -10,6 +10,7 @@ import time
 import subprocess
 import tempfile
 from contextlib import contextmanager
+from PIL import Image
 try:
     import pillow_heif
 except ImportError:
@@ -18,8 +19,7 @@ try:
     open_heif = pillow_heif.open_heif
 except AttributeError:
     open_heif = pillow_heif.open    
-pillow_heif.register_avif_opener()
-
+pillow_heif.register_heif_opener()
 
 def get_version():
     def toint(p):
@@ -264,13 +264,13 @@ def linearize(data, nclx):
 
 
 def read(opts):
-    heif = open_heif(opts.input, convert_hdr_to_8bit=False)
+    heif = Image.open(opts.input)
     width, height = heif.size
-    print(f'found image: {width}x{height} pixels, {heif.bit_depth} bits')
+    print(f'found image: {width}x{height} pixels, {heif.info["bit_depth"]} bits')
     if opts.width and opts.height:
-        heif = pillow_heif.thumbnail(heif, max(opts.width, opts.height))
+        heif.resize((opts.width, opts.height))
     with Timer('decoding'):
-        rgb = numpy.asarray(heif, dtype=numpy.float32) / (2**heif.bit_depth - 1)
+        rgb = numpy.asarray(heif, dtype=numpy.float32) / (2**heif.info["bit_depth"] - 1)
         end = time.time()
     nclx = get_nclx(heif.info)
     profile = None

@@ -9,46 +9,14 @@ import tempfile
 import math
 import time
 
+sys.path.append(os.path.join(os.path.dirname(__file__), '../helpers'))
+import helpers
 
-sRGB_to_xyz = numpy.array([
-    [0.4360747,  0.3850649, 0.1430804],
-    [0.2225045,  0.7168786,  0.0606169],
-    [0.0139322,  0.0971045,  0.7141733]
-    ], dtype=numpy.float32)
 
-lum = sRGB_to_xyz[1]
+lum = helpers.sRGB_to_xyz[1]
 to_yuv = numpy.array([lum, lum - [0, 0, 1], [1, 0, 0] - lum],
                      dtype=numpy.float32)
 to_rgb = numpy.linalg.inv(to_yuv)
-
-
-def pq(a, inv=False):
-    m1 = 2610.0 / 16384.0
-    m2 = 2523.0 / 32.0
-    c1 = 107.0 / 128.0
-    c2 = 2413.0 / 128.0
-    c3 = 2392.0 / 128.0
-    if not inv:
-        a /= 100.0
-        aa = numpy.power(a, m1)
-        res = numpy.power((c1 + c2 * aa)/(1.0 + c3 * aa), m2)
-    else:
-        p = numpy.power(a, 1.0/m2)
-        aa = numpy.fmax(p-c1, 0.0) / (c2 - c3 * p)
-        res = numpy.power(aa, 1.0/m1)
-        res *= 100
-    return res
-
-
-def srgb(a, inv=False):
-    if not inv:
-        a = numpy.fmax(numpy.fmin(a, 1.0), 0.0)
-        return numpy.where(a <= 0.0031308,
-                           12.92 * a,
-                           1.055 * numpy.power(a, 1.0/2.4)-0.055)
-    else:
-        return numpy.where(a <= 0.04045, a / 12.92,
-                           numpy.power((a + 0.055) / 1.055, 2.4))
 
 
 def tonemap(x):
@@ -100,7 +68,7 @@ def getopts():
 
 
 def save_hdr(data, outname):
-    r, g, b = numpy.split(pq(data.reshape(-1)).reshape(-1, 3), 3, 1)
+    r, g, b = numpy.split(helpers.pq(data.reshape(-1)).reshape(-1, 3), 3, 1)
     d = 2**10-1
     packed = ((b * d).astype(numpy.uint32) << 20) \
         | ((g * d).astype(numpy.uint32) << 10) \
@@ -110,7 +78,7 @@ def save_hdr(data, outname):
 
 
 def save_sdr(data, outname):
-    r, g, b = numpy.split(srgb(data.reshape(-1)).reshape(-1, 3), 3, 1)
+    r, g, b = numpy.split(helpers.srgb(data.reshape(-1)).reshape(-1, 3), 3, 1)
     d = 2**8-1
     packed = ((b * d).astype(numpy.uint32) << 16) \
         | ((g * d).astype(numpy.uint32) << 8) \
@@ -150,9 +118,7 @@ def main():
                         '-w', str(width), '-h', str(height),
                         '-C', '0', '-t', '2', '-R', '1',
                         '-z', opts.output], check=True)
-    subprocess.run(['exiftool', '-tagsFromFile', opts.hdr,
-                    '-all', '-overwrite_original', opts.output],
-                   check=True)
+    helpers.copy_metadata(opts.hdr, opts.output)
 
 if __name__ == '__main__':
     main()

@@ -10,6 +10,6 @@
 Label=AVIF (HDR PQ)
 Extension=avif
 SaveFormat=avifhdr
-WriteCommand=avifenc -j all --min 0 --max 10 -s 9 -d 12 --ignore-icc --cicp 9/16/9
+WriteCommand=avifenc -j all -q 95 -s 9 -d 12 --ignore-icc --cicp 9/16/9
 Format=png16
 SaveProfile=avifhdr/rec2100-pq.arp

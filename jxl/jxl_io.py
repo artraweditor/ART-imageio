@@ -8,6 +8,9 @@ import re
 import numpy
 import tifffile
 
+sys.path.append(os.path.join(os.path.dirname(__file__), '../helpers'))
+import helpers
+
 
 def getopts():
     p = argparse.ArgumentParser()
@@ -20,65 +23,19 @@ def getopts():
     return p.parse_args()
 
 
-def pq(a, inv):
-    m1 = 2610.0 / 16384.0
-    m2 = 2523.0 / 32.0
-    c1 = 107.0 / 128.0
-    c2 = 2413.0 / 128.0
-    c3 = 2392.0 / 128.0
-    if not inv:
-        # assume 1.0 is 100 nits, normalise so that 1.0 is 10000 nits
-        a /= 100.0
-        # apply the PQ curve
-        aa = numpy.power(a, m1)
-        res = numpy.power((c1 + c2 * aa)/(1.0 + c3 * aa), m2)
-    else:
-        p = numpy.power(a, 1.0/m2)
-        aa = numpy.fmax(p-c1, 0.0) / (c2 - c3 * p)
-        res = numpy.power(aa, 1.0/m1)
-        res *= 100
-    return res
-
-
-def srgb(a, inv):
-    if not inv:
-        a = numpy.fmax(numpy.fmin(a, 1.0), 0.0)
-        return numpy.where(a <= 0.0031308,
-                           12.92 * a,
-                           1.055 * numpy.power(a, 1.0/2.4)-0.055)
-    else:
-        return numpy.where(a <= 0.04045, a / 12.92,
-                           numpy.power((a + 0.055) / 1.055, 2.4))
-
-
-def hlg(a, inv):
-    h_a = 0.17883277
-    h_b = 1.0 - 4.0 * 0.17883277
-    h_c = 0.5 - h_a * numpy.log(4.0 * h_a)
-    if not inv:
-        rgb = a
-        rgb /= 12.0
-        rgb = numpy.fmin(numpy.fmax(rgb, 1e-6), 1.0)
-        rgb = numpy.where(rgb <= 1.0 / 12.0, numpy.sqrt(3.0 * rgb),
-                          h_a * numpy.log(
-                              numpy.fmax(12.0 * rgb - h_b, 1e-6)) + h_c)
-        return rgb
-    else:
-        rgb = a
-        rgb = numpy.where(rgb <= 0.5, rgb * rgb / 3.0,
-                          (numpy.exp((rgb - h_c)/ h_a) + h_b) / 12.0)
-        rgb *= 12.0
-        return rgb   
-
-
 def get_profile(opts):
     res = subprocess.run(['jxlinfo', opts.input], stdout=subprocess.PIPE,
                          check=True, encoding='utf-8')
     profiles = {
-        ('D65', 'sRGB primaries', 'sRGB transfer function') : ('rec709.icc', srgb),
-        ('D65', 'Rec.2100 primaries', 'PQ transfer function') : ('rec2100.icc', pq),
-        ('D65', 'Rec.2100 primaries', 'HLG transfer function') : ('rec2100.icc', hlg)
-        }
+        ('D65', 'sRGB primaries',
+         'sRGB transfer function') : ('rec709.icc', helpers.srgb),
+        
+        ('D65', 'Rec.2100 primaries',
+         'PQ transfer function') : ('rec2100.icc', helpers.pq),
+        
+        ('D65', 'Rec.2100 primaries',
+         'HLG transfer function') : ('rec2100.icc', helpers.hlg),
+    }
     for line in res.stdout.splitlines():
         if line.startswith('Color space: '):
             bits = line[13:].split(', ')
@@ -138,13 +95,13 @@ def write(opts):
         out.write(b'65535\n')
         out.write(data.tobytes('C'))
 
-    colorspace = [] if not opts.hdr else ['-x', 'color_space=RGB_D65_202_Per_PeQ']
+    colorspace = []
+    if opts.hdr:
+        colorspace = ['-x', 'color_space=RGB_D65_202_Per_PeQ', '-d', '0.0']
     subprocess.run(['cjxl', '--container=1', name, opts.output] + colorspace,
                    check=True)
     os.unlink(name)
-    
-    subprocess.run(['exiftool', '-tagsFromFile', opts.input,
-                    '-overwrite_original', opts.output], check=True)
+    helpers.copy_metadata(opts.input, opts.output)
 
         
 def main():

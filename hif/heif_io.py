@@ -10,6 +10,10 @@ import time
 import subprocess
 import tempfile
 from contextlib import contextmanager
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '../helpers'))
+import helpers
+
 try:
     import pillow_heif
 except ImportError:
@@ -49,10 +53,6 @@ def getopts():
     p.add_argument('-m', '--mode', choices=['read', 'write'], default='read')
     p.add_argument('-t', '--transfer', choices=['pq', 'hlg', 'rec709'],
                    default='pq')
-    p.add_argument('--pq-eetf', type=float, nargs=2)
-    p.add_argument('--pq-oetf-plain', action='store_true', default=True)
-    p.add_argument('--pq-oetf-strict', action='store_false',
-                   dest='pq_oetf_plain')
     return p.parse_args()
 
 ACES_AP0_coords = ((0.735, 0.265),
@@ -130,13 +130,6 @@ rec2100_nclx = NclxProfile((1, 9, 16, 9, 1,
                             0.131, 0.046,
                             0.3127, 0.3290))
 
-rec2020_to_xyz = numpy.array([
-    [0.6734241,  0.1656411,  0.1251286],
-    [0.2790177,  0.6753402,  0.0456377],
-    [-0.0019300,  0.0299784, 0.7973330]
-    ], dtype=numpy.float32)
-
-
 def get_nclx(info):
     try:
         data = info['nclx_profile']
@@ -170,53 +163,6 @@ def get_profile(info):
     return info.get('icc_profile')
 
 
-def pq(a, inv):
-    m1 = 2610.0 / 16384.0
-    m2 = 2523.0 / 32.0
-    c1 = 107.0 / 128.0
-    c2 = 2413.0 / 128.0
-    c3 = 2392.0 / 128.0
-    if not inv:
-        # assume 1.0 is 100 nits, normalise so that 1.0 is 10000 nits
-        #a = numpy.clip(a / 100.0, 0.0, 1.0)
-        # apply the PQ curve
-        aa = numpy.power(a, m1)
-        res = numpy.power((c1 + c2 * aa)/(1.0 + c3 * aa), m2)
-    else:
-        p = numpy.power(a, 1.0/m2)
-        aa = numpy.fmax(p-c1, 0.0) / (c2 - c3 * p)
-        res = numpy.power(aa, 1.0/m1)
-        #res *= 100
-    return res
-
-
-def srgb(a, inv, clip=True):
-    if not inv:
-        a = numpy.fmax(a, 0.0)
-        if clip:
-            a = numpy.fmin(a, 1.0)
-        return numpy.where(a <= 0.0031308,
-                           12.92 * a,
-                           1.055 * numpy.power(a, 1.0/2.4)-0.055)
-    else:
-        return numpy.where(a <= 0.04045, a / 12.92,
-                           numpy.power((a + 0.055) / 1.055, 2.4))
-
-
-def rec709(a, inv, clip=True):
-    if not inv:
-        a = numpy.fmax(a, 0.0)
-        if clip:
-            a = numpy.fmin(a, 1.0)
-        return numpy.where(a < 0.018,
-                           4.5 * a,
-                           1.099 * numpy.power(a, 0.45) - 0.099)
-    else:
-        return numpy.where(a < 0.081,
-                           a / 4.5,
-                           numpy.power((a + 0.099) / 1.099, 1.0/0.45))
-
-
 def rec1886(a, inv):
     return numpy.power(numpy.fmax(a, 0.0), 1.0/2.4 if not inv else 2.4)
 
@@ -248,16 +194,16 @@ def linearize(data, nclx):
     data = data.reshape(-1)
     if nclx.transfer_characteristics in (1, 6, 14, 15):
         # Rec.709
-        data = rec709(data, True)
+        data = helpers.rec709(data, True)
     elif nclx.transfer_characteristics == 13:
         # sRGB
-        data = srgb(data, True)
+        data = helpers.srgb(data, True)
     elif nclx.transfer_characteristics == 16:
         # PQ
-        data = pq(data, True) * 100.0
+        data = helpers.pq(data, True)
     elif nclx.transfer_characteristics == 18:
         # HLG
-        data = hlg(data, True) * 12.0
+        data = helpers.hlg(data, True)
     else:
         pass
     return data.reshape(shape)
@@ -307,85 +253,16 @@ def read(opts):
         os.unlink(profile)
 
 
-def pq_eetf(data, black, peak):
-    # ITU-R BT.2408-5, Annex 5
-    shape = data.shape
-    data = data.reshape(-1)
-    E1 = data
-    min_lum = pq(numpy.array([black / 10000.0]), False)[0]
-    max_lum = pq(numpy.array([peak / 10000.0]), False)[0]
-    KS = 1.5 * max_lum - 0.5
-    b = min_lum
-    def T(A):
-        return (A - KS) / (1.0 - KS)
-    def P(B):
-        tb = T(B)
-        tb2 = tb * tb
-        tb3 = tb2 * tb
-        _2_tb3 = 2 * tb3
-        _3_tb2 = 3 * tb2
-        return (_2_tb3 - _3_tb2 + 1) * KS + (tb3 - 2 * tb2 + tb) * (1.0 - KS) \
-            + (_3_tb2 - _2_tb3) * max_lum
-    E2 = numpy.where(E1 < KS, E1, P(E1))
-    E3 = E2 + b * numpy.power(1.0 - E2, 4.0)
-    E4 = E3
-    data = E4.reshape(shape)
-    return data
-
-
-def pq_oetf(data, plain):
-    # ITU-R BT.2390-10, section 5.3.1
-    shape = data.shape
-    data = data.reshape(-1)
-    if plain:
-        E1 = data
-        scaling = 2.0 / 10000.0
-        inv = lambda x: x
-    else:
-        gain = 5.0 # empirical
-        E = data * (gain / 100.0)
-        E1 = rec709(E * 59.5208, False, False)
-        scaling = 1.0 / 10000.0
-        inv = lambda x: rec1886(x, True)
-    F_D = numpy.clip((100.0 * scaling) * inv(E1), 0.0, 1.0)
-    res = pq(F_D, False)
-    res = res.reshape(shape)
-    return res
-
-
-def hlg_oetf(data):
-    # ITU-R BT.2390-10, section 6.1 (Figure 18)
-    shape = data.shape
-    data = data.reshape(-1)
-    # ensure that mid gray matches sdr
-    def ootf(a):
-        gamma = 1.2
-        return numpy.power(a, gamma-1.0) * a
-    scale = 0.3
-    res = hlg(ootf(data * scale), False)
-    return res.reshape(shape)
-
-
-def rec709_oetf(data):
-    shape = data.shape
-    data = data.reshape(-1)
-    res = rec709(data, False)
-    return res.reshape(shape)  
-
-
 def write(opts):
     with Timer('loading'):
         data = tifffile.imread(opts.input)
     height, width = data.shape[:2]
     if opts.transfer == 'hlg':
-        data = hlg_oetf(data)
+        data = helpers.hlg(data)
     elif opts.transfer == 'pq':
-        data = pq_oetf(data, opts.pq_oetf_plain)
-        if opts.pq_eetf:
-            black, peak = min(*opts.pq_eetf), max(*opts.pq_eetf)
-            data = pq_eetf(data, black, peak)
+        data = helpers.pq(data)
     else:
-        data = rec709_oetf(data)
+        data = helpers.rec709(data)
     data *= 65535.0
     data = data.astype(numpy.uint16)
     with Timer('encoding'):

@@ -164,6 +164,7 @@ jobs:
             -DCMAKE_EXE_LINKER_FLAGS=-static \
             -DJPEG_LIBRARY_RELEASE=${libdir}/libjpeg.a \
             -DZLIB_LIBRARY_RELEASE=${libdir}/libz.a \
+            -DGIF_LIBRARY=${libdir}/libgif.a \
             ../libjxl-${JXL_VERSION}
           ninja
           cp -a tools/cjxl.exe tools/djxl.exe tools/jxlinfo.exe ../../${ART_IMGIO_NAME}
@@ -211,7 +212,7 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXE_LINKER_FLAGS=-static \
-            -DCMAKE_CXX_FLAGS=-D__LITTLE_ENDIAN__ \
+            -DCMAKE_CXX_FLAGS="-std=c++98 -D__LITTLE_ENDIAN__ -DqDNGThreadSafe=0" \
             ../gpr
           ninja
           cp -a source/app/gpr_tools/gpr_tools.exe ../../${ART_IMGIO_NAME}

@@ -13,52 +13,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../helpers'))
 import helpers
 
 
-lum = helpers.sRGB_to_xyz[1]
-to_yuv = numpy.array([lum, lum - [0, 0, 1], [1, 0, 0] - lum],
-                     dtype=numpy.float32)
-to_rgb = numpy.linalg.inv(to_yuv)
-
-
-def tonemap(x):
-    c = 0 
-    a = 1.0 - c
-    mid = 0.18
-    b = (a / (mid - c)) * (1.0 - ((mid - c) / a)) * mid
-    gamma = math.pow((mid + b), 2.0) / (a * b)
-    
-    def rolloff(x):
-        return a * x / (x + b) + c
-    def contrast(x):
-        return mid * numpy.power(x / mid, gamma)
-
-    x = x.reshape(-1, 3).transpose()
-
-    y, u, v = numpy.split(to_yuv @ x, 3, 0)
-
-    h = numpy.max(y)
-    if h <= 1:
-        return x.transpose().reshape(-1).copy()
-
-    def tm(a):
-        return rolloff(contrast(a))
-
-    hue = numpy.arctan2(u, v)
-    rgb = tm(x)
-    y, u, v = numpy.split(to_yuv @ rgb, 3, 0)
-    sat = numpy.hypot(u, v)
-
-    hue = 0.6 * hue + 0.4 * numpy.arctan2(u, v)
-
-    u = sat * numpy.sin(hue)
-    v = sat * numpy.cos(hue)
-    oY = y
-
-    yuv = numpy.stack([oY.transpose(), u.transpose(), v.transpose()], -1)
-    rgb = to_rgb @ yuv.reshape(-1, 3).transpose()
-    rgb = rgb.transpose().reshape(-1)
-    return rgb
-
-
 def getopts():
     p = argparse.ArgumentParser()
     p.add_argument('--sdr')
@@ -103,7 +57,7 @@ def main():
     height, width, planes = hdrdata.shape
     hdrdata = numpy.fmax(hdrdata.reshape(-1), 0)
     if not opts.sdr:
-        sdrdata = tonemap(hdrdata)
+        sdrdata = helpers.tonemap(hdrdata)
     else:
         sdrdata = read(opts.sdr)
         h, w, p = sdrdata.shape

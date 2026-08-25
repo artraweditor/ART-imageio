@@ -137,3 +137,48 @@ def write_png16_rgb(path, a, level=0, rows_per_chunk=64):
             f.write(chunk(b"IDAT", tail))
 
         f.write(chunk(b"IEND", b""))
+
+
+_lum = sRGB_to_xyz[1]
+_to_yuv = numpy.array([_lum, _lum - [0, 0, 1], [1, 0, 0] - _lum],
+                      dtype=numpy.float32)
+_to_rgb = numpy.linalg.inv(_to_yuv)
+
+def tonemap(x):
+    c = 0
+    a = 1.0 - c
+    mid = 0.18
+    b = (a / (mid - c)) * (1.0 - ((mid - c) / a)) * mid
+    gamma = numpy.power((mid + b), 2.0) / (a * b)
+    
+    def rolloff(x):
+        return a * x / (x + b) + c
+    def contrast(x):
+        return mid * numpy.power(x / mid, gamma)
+
+    x = x.reshape(-1, 3).transpose()
+
+    iy, u, v = numpy.split(_to_yuv @ x, 3, 0)
+
+    h = numpy.max(iy)
+    if h <= 1:
+        return x.transpose().reshape(-1).copy()
+
+    def tm(a):
+        return rolloff(contrast(a))
+
+    hue = numpy.arctan2(u, v)
+    rgb = tm(x)
+    y, u, v = numpy.split(_to_yuv @ rgb, 3, 0)
+    sat = numpy.hypot(u, v) * numpy.where(iy > 0, numpy.sqrt(y / iy), 1.0)
+
+    hue = 0.6 * hue + 0.4 * numpy.arctan2(u, v)
+
+    u = sat * numpy.sin(hue)
+    v = sat * numpy.cos(hue)
+    oY = y
+
+    yuv = numpy.stack([oY.transpose(), u.transpose(), v.transpose()], -1)
+    rgb = _to_rgb @ yuv.reshape(-1, 3).transpose()
+    rgb = rgb.transpose().reshape(-1)
+    return rgb

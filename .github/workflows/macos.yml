@@ -122,7 +122,7 @@ jobs:
 
       - name: Build ultrahdr binaries
         run: |
-          ULTRAHDR_VERSION='1.4.0'
+          ULTRAHDR_VERSION='2.0.2'
           export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
           . venv/bin/activate
           mkdir ultrahdr

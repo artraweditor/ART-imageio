@@ -116,7 +116,7 @@ jobs:
 
       - name: Build ultrahdr binaries
         run: |
-          ULTRAHDR_VERSION='1.4.0'
+          ULTRAHDR_VERSION='2.0.2'
           mkdir ultrahdr
           cd ultrahdr
           wget https://github.com/google/libultrahdr/archive/refs/tags/v${ULTRAHDR_VERSION}.tar.gz

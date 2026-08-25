@@ -112,7 +112,7 @@ jobs:
 
       - name: Build ultrahdr binaries
         run: |
-          ULTRAHDR_VERSION='1.4.0'
+          ULTRAHDR_VERSION='2.0.2'
           . venv/bin/activate
           mkdir ultrahdr
           cd ultrahdr

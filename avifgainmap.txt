@@ -1,0 +1,16 @@
+# -*- conf -*-
+#
+# support for writing HDR AVIF images with a Gain Map
+# Requirements:
+# 
+# - The avifgainmaputil tool from libavif
+#   (https://github.com/AOMediaCodec/libavif)
+#   Windows binaries available at https://jeremylee.sh/bins/
+#   
+[ART ImageIO]
+Label=AVIF (HDR with Gain Map)
+Extension=avif
+SaveFormat=avifgainmap
+WriteCommand=python3 avifhdr/avif_gainmap_gen.py
+Format=float
+SaveProfile=ultrahdr/linear-rec709.arp

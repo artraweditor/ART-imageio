@@ -88,7 +88,7 @@ def rec709(a, inv=False, clip=True):
 
 def copy_metadata(src, dst, include_icc=False):
     subprocess.run(['exiftool', '-tagsFromFile', src, '-all'] +
-                   (['-icc_profile'] if include_icc else []) +
+                   (['-icc_profile'] if include_icc else ['-icc_profile:all=']) +
                    ['-overwrite_original', dst],
                    check=True)
 
@@ -145,6 +145,8 @@ _to_yuv = numpy.array([_lum, _lum - [0, 0, 1], [1, 0, 0] - _lum],
 _to_rgb = numpy.linalg.inv(_to_yuv)
 
 def tonemap(x):
+    xshape = x.shape
+    
     c = 0
     a = 1.0 - c
     mid = 0.18
@@ -162,7 +164,7 @@ def tonemap(x):
 
     h = numpy.max(iy)
     if h <= 1:
-        return x.transpose().reshape(-1).copy()
+        return x.transpose().reshape(xshape).copy()
 
     def tm(a):
         return rolloff(contrast(a))
@@ -180,5 +182,5 @@ def tonemap(x):
 
     yuv = numpy.stack([oY.transpose(), u.transpose(), v.transpose()], -1)
     rgb = _to_rgb @ yuv.reshape(-1, 3).transpose()
-    rgb = rgb.transpose().reshape(-1)
+    rgb = rgb.transpose().reshape(xshape)
     return rgb

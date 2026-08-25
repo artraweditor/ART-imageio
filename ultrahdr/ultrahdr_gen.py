@@ -57,7 +57,7 @@ def main():
     height, width, planes = hdrdata.shape
     hdrdata = numpy.fmax(hdrdata.reshape(-1), 0)
     if not opts.sdr:
-        sdrdata = helpers.tonemap(hdrdata)
+        sdrdata = helpers.tonemap(hdrdata).reshape(-1)
     else:
         sdrdata = read(opts.sdr)
         h, w, p = sdrdata.shape
@@ -70,7 +70,7 @@ def main():
                         '-p', os.path.join(d, 'out.hdr'),
                         '-y', os.path.join(d, 'out.sdr'),
                         '-w', str(width), '-h', str(height),
-                        '-C', '0', '-t', '2', '-R', '1',
+                        '-C', '0', '-t', '2', '-R', '1', '-M', '0',
                         '-z', opts.output], check=True)
     helpers.copy_metadata(opts.hdr, opts.output)
 

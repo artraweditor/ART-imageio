@@ -199,7 +199,7 @@ jobs:
             -DZLIB_LIBRARY_RELEASE=${libdir}/libz.a \
             ../libavif-${AVIF_VERSION}
           ninja
-          cp -a avifenc.exe ../../${ART_IMGIO_NAME}
+          cp -a avifenc.exe avifgainmaputil.exe ../../${ART_IMGIO_NAME}
 
       - name: Build gpr_tools binary
         run: |

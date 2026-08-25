@@ -202,7 +202,7 @@ jobs:
             -DZLIB_LIBRARY_RELEASE=/opt/local/lib/libz.a \
             ../libavif-${AVIF_VERSION}
           make -j$(nproc)
-          cp -a avifenc ../../${ART_IMGIO_NAME}
+          cp -a avifenc avifgainmaputil ../../${ART_IMGIO_NAME}
 
       - name: Build gpr_tools binary
         run : |

@@ -140,8 +140,8 @@ jobs:
           libdir=$(cygpath -m ${MINGW_PREFIX}/lib)
           mkdir jxl
           cd jxl
-          wget https://github.com/libjxl/libjxl/archive/refs/tags/v${JXL_VERSION}.tar.gz
-          tar xzf v${JXL_VERSION}.tar.gz
+          wget https://github.com/libjxl/libjxl/archive/refs/tags/v${JXL_VERSION}.zip
+          unzip v${JXL_VERSION}.zip
           cd libjxl-${JXL_VERSION}
           ./deps.sh
           cd ..

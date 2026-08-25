@@ -84,18 +84,18 @@ jobs:
           arch: x64
 
       - name: Install custom NumPy
-        shell: bash
+        shell: pwsh
         run: |
-          . venv/Scripts/activate
-          python -m pip install --upgrade pip
-          python -m pip install meson meson-python ninja
+          $py = "$PWD\venv\Scripts\python.exe"
+          & $py -m pip install --upgrade pip
+          & $py -m pip install meson meson-python ninja
           git clone --branch v2.2.2 --depth 1 https://github.com/numpy/numpy.git
           cd numpy
           git submodule update --init
-          python -m pip install -r requirements/all_requirements.txt
-          python -m pip install . \
-            -Csetup-args=--vsenv \
-            -Csetup-args=-Dblas=disabled \
+          & $py -m pip install -r requirements/all_requirements.txt
+          & $py -m pip install . `
+            -Csetup-args=--vsenv `
+            -Csetup-args=-Dblas=disabled `
             -Csetup-args=-Dlapack=disabled
 
       - name: Install required Python packages

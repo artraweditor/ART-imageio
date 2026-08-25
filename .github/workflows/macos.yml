@@ -223,7 +223,7 @@ jobs:
           DNGLAB_VERSION=0.7.2
           wget https://github.com/dnglab/dnglab/releases/download/v${DNGLAB_VERSION}/dnglab-macos-arm64_v${DNGLAB_VERSION}.zip
           unzip dnglab-macos-arm64_v${DNGLAB_VERSION}.zip
-          cp dnglab ../../${ART_IMGIO_NAME}
+          cp dnglab ${ART_IMGIO_NAME}
 
       - name: Create bundle
         run: |
@@ -232,7 +232,7 @@ jobs:
           tar czf ${ARTIFACT_NAME} ${ART_IMGIO_NAME}
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-              echo "RELEASE_TAG=${ART_VERSION}" >> $GITHUB_ENV
+              echo "RELEASE_TAG=${ART_IMGIO_VERSION}" >> $GITHUB_ENV
               echo "RELEASE_MAKE_LATEST=true" >> $GITHUB_ENV
           else
               echo "RELEASE_TAG=nightly" >> $GITHUB_ENV

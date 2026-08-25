@@ -1,32 +1,60 @@
-name: Linux Builds
+name: Windows Builds
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        os: [ubuntu-22.04, ubuntu-22.04-arm]
-        include:
-          - os: ubuntu-22.04
-            arch: x86_64
-          - os: ubuntu-22.04-arm
-            arch: arm64
-      fail-fast: false
-    
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-2025
 
     permissions:
       contents: write
-    
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
     steps:
+      - name: Setup MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          path-type: minimal
+          install: >-
+            base-devel
+            git
+            wget
+            unzip
+            zip
+            tar
+            zstd
+            perl
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-yasm
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-libjpeg-turbo
+            mingw-w64-ucrt-x86_64-libpng
+            mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-libyuv
+            mingw-w64-ucrt-x86_64-lcms2
+            mingw-w64-ucrt-x86_64-libtiff
+            mingw-w64-ucrt-x86_64-brotli
+            mingw-w64-ucrt-x86_64-expat
+            mingw-w64-ucrt-x86_64-libinih
+            mingw-w64-ucrt-x86_64-exiv2
+            mingw-w64-ucrt-x86_64-librsvg
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           path: repo
 
       - name: Get version
+        shell: bash
         run: |
           cd repo
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
@@ -34,86 +62,61 @@ jobs:
           else
               echo "ART_IMGIO_VERSION=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
           fi
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-              echo "ART_IMGIO_NAME=ART-imageio-bin-linux64" >> $GITHUB_ENV
-          else
-              echo "ART_IMGIO_NAME=ART-imageio-bin-linux-aarch64" >> $GITHUB_ENV
-          fi
-
-      - name: Install base dependencies
-        run: |
-          sudo apt update
-          DEBIAN_FRONTEND=noninteractive sudo apt install -y \
-            git \
-            build-essential \
-            cmake \
-            curl \
-            pkg-config \
-            librsvg2-dev \
-            liblcms2-dev \
-            libtiff5-dev \
-            libinih-dev \
-            libbrotli-dev \
-            libexpat1-dev \
-            libexiv2-dev \
-            libyuv-dev \
-            libjpeg-dev \
-            libpng-dev \
-            zstd \
-            yasm \
-            wget
-          sudo python3 -m pip install meson
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-              ninja_zip=ninja-linux.zip
-          else
-              ninja_zip=ninja-linux-aarch64.zip
-          fi
-          wget https://github.com/ninja-build/ninja/releases/download/v1.12.1/${ninja_zip}
-          unzip ${ninja_zip}
-          sudo mv ninja /usr/local/bin
+          echo "ART_IMGIO_NAME=ART-imageio-bin-win64" >> $GITHUB_ENV
 
       - name: Install standalone Python
+        shell: bash
         run: |
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-              wget https://github.com/astral-sh/python-build-standalone/releases/download/20250612/cpython-3.12.11+20250612-x86_64_v2-unknown-linux-gnu-pgo+lto-full.tar.zst
-              zstdcat cpython-3.12.11+20250612-x86_64_v2-unknown-linux-gnu-pgo+lto-full.tar.zst | tar xv
-          else
-              wget https://github.com/astral-sh/python-build-standalone/releases/download/20250612/cpython-3.12.11+20250612-aarch64-unknown-linux-gnu-lto-full.tar.zst
-              zstdcat cpython-3.12.11+20250612-aarch64-unknown-linux-gnu-lto-full.tar.zst | tar xv
-          fi
+          PY_VERSION=3.12.11
+          PY_RELEASE=20250612
+          tarball=cpython-${PY_VERSION}+${PY_RELEASE}-x86_64-pc-windows-msvc-install_only.tar.gz
+          curl -LO https://github.com/astral-sh/python-build-standalone/releases/download/${PY_RELEASE}/${tarball}
+          tar xzf ${tarball}
 
       - name: Create Python virtualenv
+        shell: bash
         run: |
-          python/install/bin/python3 -m venv venv
-          . venv/bin/activate
+          python/python.exe -m venv venv
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Install custom NumPy
+        shell: bash
         run: |
-          . venv/bin/activate
+          . venv/Scripts/activate
+          python -m pip install --upgrade pip
+          python -m pip install meson meson-python ninja
           git clone --branch v2.2.2 --depth 1 https://github.com/numpy/numpy.git
           cd numpy
           git submodule update --init
           python -m pip install -r requirements/all_requirements.txt
-          python -m pip install . -Csetup-args=-Dblas=disabled -Csetup-args=-Dlapack=disabled
-          
+          python -m pip install . \
+            -Csetup-args=--vsenv \
+            -Csetup-args=-Dblas=disabled \
+            -Csetup-args=-Dlapack=disabled
+
       - name: Install required Python packages
+        shell: bash
         run: |
-          . venv/bin/activate
+          . venv/Scripts/activate
           python -m pip install -r repo/helpers/python/requirements.txt
           python -m pip install PyInstaller
 
       - name: Build Python installer
+        shell: bash
         run: |
-          . venv/bin/activate
+          . venv/Scripts/activate
           python repo/helpers/pyinstaller/run_pyinstaller.py -o out
           mkdir ${ART_IMGIO_NAME}
-          mv out/python3/python3 ${ART_IMGIO_NAME}
+          mv out/python3/python3.exe ${ART_IMGIO_NAME}
           mv out/python3/_internal ${ART_IMGIO_NAME}
 
       - name: Build ultrahdr binaries
         run: |
           ULTRAHDR_VERSION='1.4.0'
-          . venv/bin/activate
           mkdir ultrahdr
           cd ultrahdr
           wget https://github.com/google/libultrahdr/archive/refs/tags/v${ULTRAHDR_VERSION}.tar.gz
@@ -121,23 +124,20 @@ jobs:
           mkdir build
           cd build
           cmake \
+            -G Ninja \
             -DCMAKE_FIND_LIBRARY_SUFFIXES=.a \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=0 \
             -DUHDR_WRITE_XMP=1 \
+            -DCMAKE_EXE_LINKER_FLAGS=-static \
             ../libultrahdr-${ULTRAHDR_VERSION}
-          make -j$(nproc)
-          cp -a ultrahdr_app ../../${ART_IMGIO_NAME}
+          ninja
+          cp -a ultrahdr_app.exe ../../${ART_IMGIO_NAME}
 
       - name: Build jxl binaries
         run: |
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-              arch=x86_64
-          else
-              arch=aarch64
-          fi
           JXL_VERSION='0.12.0'
-          . venv/bin/activate
+          libdir=$(cygpath -m ${MINGW_PREFIX}/lib)
           mkdir jxl
           cd jxl
           wget https://github.com/libjxl/libjxl/archive/refs/tags/v${JXL_VERSION}.tar.gz
@@ -148,6 +148,7 @@ jobs:
           mkdir build
           cd build
           cmake \
+            -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_FIND_LIBRARY_SUFFIXES=.a \
             -DBUILD_SHARED_LIBS=0 \
@@ -160,20 +161,17 @@ jobs:
             -DJPEGXL_ENABLE_SJPEG=0 \
             -DJPEGXL_BUNDLE_LIBPNG=1 \
             -DJPEGXL_ENABLE_JPEGLI_LIBJPEG=0 \
-            -DJPEG_LIBRARY_RELEASE=/usr/lib/${arch}-linux-gnu/libjpeg.a \
+            -DCMAKE_EXE_LINKER_FLAGS=-static \
+            -DJPEG_LIBRARY_RELEASE=${libdir}/libjpeg.a \
+            -DZLIB_LIBRARY_RELEASE=${libdir}/libz.a \
             ../libjxl-${JXL_VERSION}
-          make -j$(nproc)
-          cp -a tools/cjxl tools/djxl tools/jxlinfo ../../${ART_IMGIO_NAME}
-          
+          ninja
+          cp -a tools/cjxl.exe tools/djxl.exe tools/jxlinfo.exe ../../${ART_IMGIO_NAME}
+
       - name: Build avif binaries
         run: |
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-              arch=x86_64
-          else
-              arch=aarch64
-          fi
           AVIF_VERSION='1.4.2'
-          . venv/bin/activate
+          libdir=$(cygpath -m ${MINGW_PREFIX}/lib)
           mkdir avif
           cd avif
           wget https://github.com/AOMediaCodec/libavif/archive/refs/tags/v${AVIF_VERSION}.tar.gz
@@ -181,6 +179,7 @@ jobs:
           mkdir build
           cd build
           cmake \
+            -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=0 \
             -DCMAKE_FIND_LIBRARY_SUFFIXES=.a \
@@ -192,43 +191,51 @@ jobs:
             -DAVIF_LIBYUV=SYSTEM \
             -DAVIF_CODEC_AOM_DECODE=1 \
             -DAVIF_CODEC_AOM_ENCODE=1 \
-            -DLIBYUV_LIBRARY=/usr/lib/${arch}-linux-gnu/libyuv.a \
-            -DJPEG_LIBRARY_RELEASE=/usr/lib/${arch}-linux-gnu/libjpeg.a \
-            -DPNG_LIBRARY_RELEASE=/usr/lib/${arch}-linux-gnu/libpng.a \
-            -DZLIB_LIBRARY_RELEASE=/usr/lib/${arch}-linux-gnu/libz.a \
+            -DCMAKE_EXE_LINKER_FLAGS=-static \
+            -DLIBYUV_LIBRARY=${libdir}/libyuv.a \
+            -DJPEG_LIBRARY_RELEASE=${libdir}/libjpeg.a \
+            -DPNG_LIBRARY_RELEASE=${libdir}/libpng.a \
+            -DZLIB_LIBRARY_RELEASE=${libdir}/libz.a \
             ../libavif-${AVIF_VERSION}
-          make -j$(nproc)
-          cp -a avifenc ../../${ART_IMGIO_NAME}
+          ninja
+          cp -a avifenc.exe ../../${ART_IMGIO_NAME}
 
       - name: Build gpr_tools binary
-        run : |
+        run: |
           mkdir gpr
           cd gpr
           git clone --depth 1 https://github.com/gopro/gpr.git
           mkdir build
           cd build
           cmake \
-            -GNinja \
+            -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXE_LINKER_FLAGS=-static \
             -DCMAKE_CXX_FLAGS=-D__LITTLE_ENDIAN__ \
             ../gpr
           ninja
-          cp -a source/app/gpr_tools/gpr_tools ../../${ART_IMGIO_NAME}
+          cp -a source/app/gpr_tools/gpr_tools.exe ../../${ART_IMGIO_NAME}
 
       - name: Get dnglab binary
         run: |
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-              arch=x64
-          else
-              arch=aarch64
-          fi
           DNGLAB_VERSION=0.7.2
-          wget https://github.com/dnglab/dnglab/releases/download/v${DNGLAB_VERSION}/dnglab_linux_${arch}
-          mv dnglab_linux_${arch} dnglab
-          chmod a+x dnglab
-          cp dnglab ${ART_IMGIO_NAME}
-          
+          wget https://github.com/dnglab/dnglab/releases/download/v${DNGLAB_VERSION}/dnglab-win-x64_v${DNGLAB_VERSION}.zip
+          unzip -o dnglab-win-x64_v${DNGLAB_VERSION}.zip -d dnglab_dl
+          cp "$(find dnglab_dl -name dnglab.exe | head -1)" ${ART_IMGIO_NAME}
+
+      - name: Bundle any remaining runtime DLLs
+        run: |
+          cd ${ART_IMGIO_NAME}
+          for exe in ultrahdr_app.exe cjxl.exe djxl.exe jxlinfo.exe avifenc.exe gpr_tools.exe; do
+              echo "== $exe"
+              if ldd $exe | grep -q "${MINGW_PREFIX}/bin"; then
+                  ldd $exe | grep "${MINGW_PREFIX}/bin"
+                  ldd $exe | grep "${MINGW_PREFIX}/bin" | cut -d' ' -f3 | sort -u | while read -r dll; do cp -n "$dll" . ; done
+              else
+                  echo "  (no mingw DLLs)"
+              fi
+          done
+
       - name: Create bundle
         run: |
           ARTIFACT_NAME=${ART_IMGIO_NAME}.tar.gz

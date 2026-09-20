@@ -5,7 +5,6 @@ import argparse
 import math
 import numpy
 import tifffile
-import struct
 import time
 import subprocess
 import tempfile
@@ -18,11 +17,6 @@ try:
     import pillow_heif
 except ImportError:
     import pi_heif as pillow_heif
-try:
-    open_heif = pillow_heif.open_heif
-except AttributeError:
-    open_heif = pillow_heif.open    
-pillow_heif.register_avif_opener()
 
 
 def get_version():
@@ -32,6 +26,12 @@ def get_version():
         except ValueError:
             return 0
     return tuple([toint(t) for t in pillow_heif.__version__.split('.')])
+
+
+if get_version() < (1, 0, 0):
+    sys.exit('error: pillow_heif >= 1.0.0 is required '
+             '(found %s), please upgrade with: '
+             'python3 -m pip install -U pillow_heif' % pillow_heif.__version__)
 
 
 @contextmanager
@@ -53,6 +53,7 @@ def getopts():
     p.add_argument('-m', '--mode', choices=['read', 'write'], default='read')
     p.add_argument('-t', '--transfer', choices=['pq', 'hlg', 'rec709'],
                    default='pq')
+    p.add_argument('-q', '--quality', default=80, type=int)
     return p.parse_args()
 
 ACES_AP0_coords = ((0.735, 0.265),
@@ -60,7 +61,7 @@ ACES_AP0_coords = ((0.735, 0.265),
                    (0.0, -0.077),
                    (0.322, 0.338))
 
-# ACES AP0 v4 ICC profile with linear TRC    
+# ACES AP0 v4 ICC profile with linear TRC
 ACES_AP0 = os.path.abspath(os.path.join(os.path.dirname(__file__), 'ap0.icc'))
 
 
@@ -76,83 +77,65 @@ def compute_xyz_matrix(key):
 
 
 class NclxProfile:
-    def __init__(self, t):
-        self.color_primaries = t[1]
-        self.transfer_characteristics = t[2]
-        self.matrix_coefficients = t[3]
-        self.red_xy = t[5], t[6]
-        self.green_xy = t[7], t[8]
-        self.blue_xy = t[9], t[10]
-        self.white_xy = t[11], t[12]
+    def __init__(self, color_primaries, transfer_characteristics,
+                 matrix_coefficients, full_range_flag=1, coords=None):
+        self.color_primaries = color_primaries
+        self.transfer_characteristics = transfer_characteristics
+        self.matrix_coefficients = matrix_coefficients
+        self.full_range_flag = full_range_flag
+        if coords is not None:
+            self.red_xy, self.green_xy, self.blue_xy, self.white_xy = coords
+        else:
+            self.red_xy = self.green_xy = self.blue_xy = self.white_xy = None
 
     def __str__(self):
-        def xy(t): return tuple(map(lambda n: round(n, 3), t))
+        def xy(t): return tuple(map(lambda n: round(n, 3), t)) if t else None
         return f'nclx: {self.color_primaries}/{self.transfer_characteristics}/{self.matrix_coefficients} - r: {xy(self.red_xy)}, g: {xy(self.green_xy)}, b: {xy(self.blue_xy)}, w: {xy(self.white_xy)}'
 
     def pack(self):
-        if get_version() >= (0, 9, 1):
-            return {
-                'color_primaries' : self.color_primaries,
-                'transfer_characteristics' : self.transfer_characteristics,
-                'matrix_coefficients' : self.matrix_coefficients,
-                'full_range_flag' : 1,
-                'color_primary_red_x' : self.red_xy[0],
-                'color_primary_red_y' : self.red_xy[1],
-                'color_primary_green_x' : self.green_xy[0],
-                'color_primary_green_y' : self.green_xy[1],
-                'color_primary_blue_x' : self.blue_xy[0],
-                'color_primary_blue_y' : self.blue_xy[1],
-                'color_primary_white_x' : self.white_xy[0],
-                'color_primary_white_y' : self.white_xy[1]
+        """nclx parameters in the form expected by pillow_heif when saving"""
+        return {
+            'color_primaries' : self.color_primaries,
+            'transfer_characteristics' : self.transfer_characteristics,
+            'matrix_coefficients' : self.matrix_coefficients,
+            'full_range_flag' : self.full_range_flag,
             }
-        else:
-            return struct.pack('BiiiBffffffff',
-                               1, self.color_primaries,
-                               self.transfer_characteristics,
-                               self.matrix_coefficients, 1,
-                               self.red_xy[0], self.red_xy[1],
-                               self.green_xy[0], self.green_xy[1],
-                               self.blue_xy[0], self.blue_xy[1],
-                               self.white_xy[0], self.white_xy[1]
-                               )
+
+    @staticmethod
+    def unpack(data):
+        """build a NclxProfile out of the dict returned by pillow_heif"""
+        coords = None
+        try:
+            coords = ((data['color_primary_red_x'],
+                       data['color_primary_red_y']),
+                      (data['color_primary_green_x'],
+                       data['color_primary_green_y']),
+                      (data['color_primary_blue_x'],
+                       data['color_primary_blue_y']),
+                      (data['color_primary_white_x'],
+                       data['color_primary_white_y']))
+        except KeyError:
+            pass
+        return NclxProfile(data['color_primaries'],
+                           data['transfer_characteristics'],
+                           data['matrix_coefficients'],
+                           data.get('full_range_flag', 1),
+                           coords)
 # end of class NclxProfile
 
-sRGB_nclx = NclxProfile(
-    (1, 1, 13, 5, 1,
-     0.6399999856948853, 0.33000001311302185,
-     0.30000001192092896, 0.6000000238418579,
-     0.15000000596046448, 0.05999999865889549,
-     0.3127000033855438, 0.32899999618530273))
+sRGB_nclx = NclxProfile(1, 13, 5)
 
-rec2100_nclx = NclxProfile((1, 9, 16, 9, 1,
-                            0.708, 0.292,
-                            0.170, 0.797,
-                            0.131, 0.046,
-                            0.3127, 0.3290))
+rec2100_nclx = NclxProfile(9, 16, 9)
+
 
 def get_nclx(info):
     try:
-        data = info['nclx_profile']
-        if get_version() >= (0, 9, 1):
-            return NclxProfile((1, data['color_primaries'],
-                                data['transfer_characteristics'],
-                                data['matrix_coefficients'],
-                                1,
-                                data['color_primary_red_x'],
-                                data['color_primary_red_y'],
-                                data['color_primary_green_x'],
-                                data['color_primary_green_y'],
-                                data['color_primary_blue_x'],
-                                data['color_primary_blue_y'],
-                                data['color_primary_white_x'],
-                                data['color_primary_white_y']))
-        else:
-            return NclxProfile(struct.unpack('BiiiBffffffff', data))
+        return NclxProfile.unpack(info['nclx_profile'])
     except:
         return None
 
 def getmatrix(nclx):
-    if nclx:
+    if nclx and nclx.red_xy:
         return compute_xyz_matrix([nclx.red_xy, nclx.green_xy, nclx.blue_xy,
                                    nclx.white_xy])
     else:
@@ -185,7 +168,7 @@ def hlg(a, inv):
                           (numpy.exp((rgb - h_c)/ h_a) + h_b) / 12.0)
         #rgb *= 12.0
         return rgb
-    
+
 
 def linearize(data, nclx):
     if not nclx:
@@ -209,22 +192,51 @@ def linearize(data, nclx):
     return data.reshape(shape)
 
 
-def read(opts):
-    heif = open_heif(opts.input, convert_hdr_to_8bit=False)
+def decode(path):
+    # hdr_to_16bit=False keeps the samples in their native range, so that we
+    # can normalise them exactly with the bit depth of the image
+    heif = pillow_heif.open_heif(path, convert_hdr_to_8bit=False,
+                                 hdr_to_16bit=False)
+    info = dict(heif.info)
+    bit_depth = info.get('bit_depth', 8)
     width, height = heif.size
-    print(f'found image: {width}x{height} pixels, {heif.bit_depth} bits')
-    if opts.width and opts.height:
-        heif = pillow_heif.thumbnail(heif, max(opts.width, opts.height))
+    print(f'found image: {width}x{height} pixels, {bit_depth} bits')
     with Timer('decoding'):
-        rgb = numpy.asarray(heif, dtype=numpy.float32) / (2**heif.bit_depth - 1)
-        end = time.time()
-    nclx = get_nclx(heif.info)
+        rgb = numpy.asarray(heif, dtype=numpy.float32) / (2**bit_depth - 1)
+    if rgb.ndim == 2:
+        rgb = numpy.dstack([rgb] * 3)
+    elif rgb.shape[2] > 3:
+        # drop the alpha channel, ART wants plain RGB
+        rgb = numpy.ascontiguousarray(rgb[:, :, :3])
+    return rgb, info
+
+
+def resize(rgb, width, height):
+    """Downscale rgb so that it fits in a width x height box"""
+    h, w = rgb.shape[:2]
+    scale = min(width / w, height / h)
+    if scale >= 1.0:
+        return rgb
+    from PIL import Image
+    nw, nh = max(1, round(w * scale)), max(1, round(h * scale))
+    return numpy.dstack(
+        [numpy.asarray(Image.fromarray(rgb[:, :, c]).resize(
+            (nw, nh), Image.BOX), dtype=numpy.float32)
+         for c in range(rgb.shape[2])])
+
+
+def read(opts):
+    rgb, info = decode(opts.input)
+    if opts.width and opts.height:
+        with Timer('resizing'):
+            rgb = resize(rgb, opts.width, opts.height)
+    nclx = get_nclx(info)
     profile = None
     del_profile = False
     if nclx:
         print('nclx profile: %s' % nclx)
     else:
-        prof = get_profile(heif.info)
+        prof = get_profile(info)
         if not prof:
             print('no profile found, assuming sRGB')
             nclx = sRGB_nclx
@@ -256,62 +268,33 @@ def read(opts):
 def write(opts):
     with Timer('loading'):
         data = tifffile.imread(opts.input)
+    if data.ndim == 2:
+        data = numpy.dstack([data] * 3)
+    elif data.shape[2] > 3:
+        data = data[:, :, :3]
     height, width = data.shape[:2]
+    data = numpy.fmax(data.astype(numpy.float32), 0.0)
     if opts.transfer == 'hlg':
         data = helpers.hlg(data)
     elif opts.transfer == 'pq':
         data = helpers.pq(data)
     else:
         data = helpers.rec709(data)
-    data *= 65535.0
-    data = data.astype(numpy.uint16)
+    data = numpy.clip(data * 65535.0 + 0.5, 0.0, 65535.0).astype(numpy.uint16)
+    nclx = NclxProfile(rec2100_nclx.color_primaries,
+                       {
+                           'pq' : 16,
+                           'hlg' : 18,
+                           'rec709' : 1,
+                       }[opts.transfer],
+                       rec2100_nclx.matrix_coefficients)
     with Timer('encoding'):
-        heif_file = pillow_heif.from_bytes(mode="RGB;16",
-                                           size=(width, height),
-                                           data=data.tobytes())
-    rec2100_nclx.transfer_characteristics = {
-        'pq' : 16,
-        'hlg' : 18,
-        'rec709' : 1,
-        }[opts.transfer]
-    heif_file.info['nclx_profile'] = rec2100_nclx.pack()
-    with Timer('saving'):
-        ffi = pillow_heif.heif.ffi
-        lib = pillow_heif.heif.lib
-        @staticmethod
-        def my_save(ctx, img_list, primary_index, **kwargs):
-            enc_options = lib.heif_encoding_options_alloc()
-            enc_options = ffi.gc(enc_options, lib.heif_encoding_options_free)
-            enc_options.macOS_compatibility_workaround_no_nclx_profile = 0
-            for i, img in enumerate(img_list):
-                pillow_heif.heif.set_color_profile(img.heif_img, img.info)
-                
-                p_img_handle = ffi.new("struct heif_image_handle **")
-                error = lib.heif_context_encode_image(ctx.ctx,
-                                                      img.heif_img,
-                                                      ctx.encoder,
-                                                      enc_options, p_img_handle)
-                pillow_heif.heif.check_libheif_error(error)
-                new_img_handle = ffi.gc(p_img_handle[0],
-                                        lib.heif_image_handle_release)
-                exif = img.info["exif"]
-                xmp = img.info["xmp"]
-                if i == primary_index:
-                    if i:
-                        lib.heif_context_set_primary_image(ctx.ctx,
-                                                           new_img_handle)
-                    if kwargs.get("exif", -1) != -1:
-                        exif = kwargs["exif"]
-                        if isinstance(exif, Image.Exif):
-                            exif = exif.tobytes()
-                    if kwargs.get("xmp", -1) != -1:
-                        xmp = kwargs["xmp"]
-                pillow_heif.heif.set_exif(ctx, new_img_handle, exif)
-                pillow_heif.heif.set_xmp(ctx, new_img_handle, xmp)
-                pillow_heif.heif.set_metadata(ctx, new_img_handle, img.info)
-
-        pillow_heif.HeifFile._save = my_save
-        heif_file.save(opts.output, quality=80)
+        pillow_heif.encode('RGB;16', (width, height),
+                           numpy.ascontiguousarray(data).tobytes(),
+                           opts.output,
+                           quality=opts.quality,
+                           save_nclx_profile=True,
+                           **nclx.pack())
 
 
 def main():

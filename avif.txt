@@ -3,11 +3,10 @@
 # support for reading AVIF images 
 # Requirements:
 # 
-# - Python with the hif/heif_io.py script installed (even if you do not want
-#   a HEIF loader) and its requirements (see hif.txt)
+# - The avifdec tool from libavif (https://github.com/AOMediaCodec/libavif)
 #   
 [ART ImageIO]
 Label=AVIF
 Extension=avif
-ReadCommand=python3 hif/heif_io.py
-Format=float
+ReadCommand=avifdec -d 16 --png-compress 0
+Format=png16

@@ -3,4 +3,4 @@ numpy
 pillow
 webp
 OpenEXR
-pillow_heif==0.9.1
+pillow_heif>=1.0.0

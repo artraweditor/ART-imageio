@@ -4,7 +4,7 @@
 #
 # Requirements:
 # 
-# - Python with the following libraries: tifffile pillow_heif numpy
+# - Python with the following libraries: tifffile pillow_heif (>= 1.0.0) numpy
 #   (available via pip, e.g: python3 -m pip install tifffile)
 #
 # - exiftool

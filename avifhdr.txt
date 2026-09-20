@@ -4,7 +4,6 @@
 # Requirements:
 # 
 # - The avifenc tool from libavif (https://github.com/AOMediaCodec/libavif)
-#   Windows binaries available at https://jeremylee.sh/bins/
 #   
 [ART ImageIO]
 Label=AVIF (HDR PQ)

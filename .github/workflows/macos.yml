@@ -19,6 +19,10 @@ jobs:
 
     permissions:
       contents: write
+
+    env:
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+      HOMEBREW_NO_ENV_HINTS: 1
     
     steps:
       - name: Checkout
@@ -40,52 +44,52 @@ jobs:
           fi
           echo "ART_IMGIO_NAME=ART-imageio-bin-macOS-${{ matrix.arch }}" >> $GITHUB_ENV
 
-      - if: ${{ matrix.os == 'macos-15-intel' }}
-        name: Install MacPorts x64
-        run: |          
-          wget https://github.com/macports/macports-base/releases/download/v2.11.6/MacPorts-2.11.6-15-Sequoia.pkg
-          sudo installer -pkg MacPorts-2.11.6-15-Sequoia.pkg -target /
+      - name: Install base packages
+        run: |
+          brew install \
+            pkgconf \
+            automake \
+            autoconf \
+            libtool \
+            cmake \
+            ninja \
+            exiv2 \
+            little-cms2 \
+            yasm \
+            jpeg-turbo \
+            libpng \
+            zlib \
+            zstd \
+            wget
 
-      - if: ${{ matrix.os == 'macos-14' }}
-        name: Install MacPorts arm64
-        run: |          
-          wget https://github.com/macports/macports-base/releases/download/v2.10.4/MacPorts-2.10.4-14-Sonoma.pkg
-          sudo installer -pkg MacPorts-2.10.4-14-Sonoma.pkg -target /
-          export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
-          
-      - name: Install base ports
-        run: |          
-          export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
-          sudo port install pkgconfig
-          sudo port install automake
-          sudo port install autoconf
-          sudo port install libtool
-          sudo port install cmake
-          sudo port install exiv2
-          sudo port install lcms2
-          sudo port install yasm
-          sudo port install libjpeg-turbo
-          sudo port install libpng
-          sudo port install libyuv
-          sudo port install zstd
+      - name: Set up build environment
+        run: |
+          BREW_PREFIX=$(brew --prefix)
+          ZLIB_PREFIX=$(brew --prefix zlib)
+          JPEG_PREFIX=$(brew --prefix jpeg-turbo)
+          PNG_PREFIX=$(brew --prefix libpng)
+          echo "BREW_PREFIX=${BREW_PREFIX}" >> $GITHUB_ENV
+          echo "ZLIB_PREFIX=${ZLIB_PREFIX}" >> $GITHUB_ENV
+          echo "JPEG_PREFIX=${JPEG_PREFIX}" >> $GITHUB_ENV
+          echo "PNG_PREFIX=${PNG_PREFIX}" >> $GITHUB_ENV
+          # zlib is keg-only, so it has to be listed explicitly for CMake and pkg-config
+          echo "CMAKE_PREFIX_PATH=${ZLIB_PREFIX}:${JPEG_PREFIX}:${PNG_PREFIX}:${BREW_PREFIX}" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=${ZLIB_PREFIX}/lib/pkgconfig:${JPEG_PREFIX}/lib/pkgconfig:${BREW_PREFIX}/lib/pkgconfig" >> $GITHUB_ENV
+          echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
 
       - name: Removing conflicting system libraries
         run: |
           sudo rm -rf /Library/Frameworks/Mono.framework
-          sudo rm -rf /usr/local/opt/lib
-          sudo rm -rf /usr/local/opt/giflib
 
       - if: ${{ matrix.os == 'macos-14' }}
         name: Install standalone Python arm64
         run: |
-          export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
           wget https://github.com/astral-sh/python-build-standalone/releases/download/20250115/cpython-3.12.8+20250115-aarch64-apple-darwin-pgo+lto-full.tar.zst
           zstdcat cpython-3.12.8+20250115-aarch64-apple-darwin-pgo+lto-full.tar.zst | tar xv
           
       - if: ${{ matrix.os == 'macos-15-intel' }}
         name: Install standalone Python x64
         run: |
-          export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
           wget https://github.com/astral-sh/python-build-standalone/releases/download/20250115/cpython-3.12.8+20250115-x86_64-apple-darwin-pgo+lto-full.tar.zst
           zstdcat cpython-3.12.8+20250115-x86_64-apple-darwin-pgo+lto-full.tar.zst | tar xv
 
@@ -96,7 +100,6 @@ jobs:
 
       - name: Install custom NumPy
         run: |
-          export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
           . venv/bin/activate
           git clone --branch v2.2.2 --depth 1 https://github.com/numpy/numpy.git
           cd numpy
@@ -106,14 +109,12 @@ jobs:
           
       - name: Install required Python packages
         run: |
-          export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
           . venv/bin/activate
           python -m pip install -r repo/helpers/python/requirements.txt
           python -m pip install PyInstaller
 
       - name: Build Python installer
         run: |
-          export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
           . venv/bin/activate
           python repo/helpers/pyinstaller/run_pyinstaller.py -o out
           mkdir ${ART_IMGIO_NAME}
@@ -123,7 +124,6 @@ jobs:
       - name: Build ultrahdr binaries
         run: |
           ULTRAHDR_VERSION='2.0.2'
-          export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
           . venv/bin/activate
           mkdir ultrahdr
           cd ultrahdr
@@ -131,19 +131,18 @@ jobs:
           tar xzf v${ULTRAHDR_VERSION}.tar.gz
           mkdir build
           cd build
-          /opt/local/bin/cmake \
+          cmake \
             -DCMAKE_FIND_LIBRARY_SUFFIXES=.a \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=0 \
             -DUHDR_WRITE_XMP=1 \
             ../libultrahdr-${ULTRAHDR_VERSION}
-          make -j$(nproc)
+          make -j${NPROC}
           cp -a ultrahdr_app ../../${ART_IMGIO_NAME}
 
       - name: Build jxl binaries
         run: |
           JXL_VERSION='0.12.0'
-          export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
           . venv/bin/activate
           mkdir jxl
           cd jxl
@@ -154,7 +153,7 @@ jobs:
           cd ..
           mkdir build
           cd build
-          /opt/local/bin/cmake \
+          cmake \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_FIND_LIBRARY_SUFFIXES=.a \
             -DBUILD_SHARED_LIBS=0 \
@@ -167,24 +166,28 @@ jobs:
             -DJPEGXL_ENABLE_SJPEG=0 \
             -DJPEGXL_BUNDLE_LIBPNG=1 \
             -DJPEGXL_ENABLE_JPEGLI_LIBJPEG=0 \
-            -DJPEG_LIBRARY_RELEASE=/opt/local/lib/libjpeg.a \
-            -DZLIB_LIBRARY_RELEASE=/opt/local/lib/libz.a \
+            -DZLIB_ROOT=${ZLIB_PREFIX} \
+            -DJPEG_LIBRARY_RELEASE=${JPEG_PREFIX}/lib/libjpeg.a \
+            -DZLIB_LIBRARY_RELEASE=${ZLIB_PREFIX}/lib/libz.a \
             ../libjxl-${JXL_VERSION}
-          make -j$(nproc)
+          make -j${NPROC}
           cp -a tools/cjxl tools/djxl tools/jxlinfo ../../${ART_IMGIO_NAME}
           
       - name: Build avif binaries
         run: |
           AVIF_VERSION='1.4.2'
-          export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
           . venv/bin/activate
           mkdir avif
           cd avif
           wget https://github.com/AOMediaCodec/libavif/archive/refs/tags/v${AVIF_VERSION}.tar.gz
           tar xzf v${AVIF_VERSION}.tar.gz
+          # Homebrew has no libyuv formula, so build the version libavif expects
+          cd libavif-${AVIF_VERSION}/ext
+          bash libyuv.cmd
+          cd ../..
           mkdir build
           cd build
-          /opt/local/bin/cmake \
+          cmake \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=0 \
             -DCMAKE_FIND_LIBRARY_SUFFIXES=.a \
@@ -193,15 +196,15 @@ jobs:
             -DAVIF_ENABLE_GTEST=0 \
             -DAVIF_ZLIBPNG=SYSTEM \
             -DAVIF_JPEG=SYSTEM \
-            -DAVIF_LIBYUV=SYSTEM \
+            -DAVIF_LIBYUV=LOCAL \
             -DAVIF_CODEC_AOM_DECODE=1 \
             -DAVIF_CODEC_AOM_ENCODE=1 \
-            -DLIBYUV_LIBRARY=/opt/local/lib/libyuv.a \
-            -DJPEG_LIBRARY_RELEASE=/opt/local/lib/libjpeg.a \
-            -DPNG_LIBRARY_RELEASE=/opt/local/lib/libpng.a \
-            -DZLIB_LIBRARY_RELEASE=/opt/local/lib/libz.a \
+            -DZLIB_ROOT=${ZLIB_PREFIX} \
+            -DJPEG_LIBRARY_RELEASE=${JPEG_PREFIX}/lib/libjpeg.a \
+            -DPNG_LIBRARY_RELEASE=${PNG_PREFIX}/lib/libpng.a \
+            -DZLIB_LIBRARY_RELEASE=${ZLIB_PREFIX}/lib/libz.a \
             ../libavif-${AVIF_VERSION}
-          make -j$(nproc)
+          make -j${NPROC}
           cp -a avifenc avifdec avifgainmaputil ../../${ART_IMGIO_NAME}
 
       - name: Build gpr_tools binary
@@ -211,10 +214,10 @@ jobs:
           git clone --depth 1 https://github.com/gopro/gpr.git
           mkdir build
           cd build
-          /opt/local/bin/cmake \
+          cmake \
             -DCMAKE_BUILD_TYPE=Release \
             ../gpr
-          make -j$(nproc)
+          make -j${NPROC}
           cp -a source/app/gpr_tools/gpr_tools ../../${ART_IMGIO_NAME}
 
       - if: ${{ matrix.os == 'macos-14' }}
@@ -227,7 +230,6 @@ jobs:
 
       - name: Create bundle
         run: |
-          export PATH=/opt/local/libexec/gnubin:/opt/local/bin:/opt/local/sbin:$PATH
           ARTIFACT_NAME=${ART_IMGIO_NAME}.tar.gz
           tar czf ${ARTIFACT_NAME} ${ART_IMGIO_NAME}
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV

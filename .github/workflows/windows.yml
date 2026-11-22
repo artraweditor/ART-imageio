@@ -136,7 +136,7 @@ jobs:
 
       - name: Build jxl binaries
         run: |
-          JXL_VERSION='0.12.0'
+          JXL_VERSION='0.13.0'
           libdir=$(cygpath -m ${MINGW_PREFIX}/lib)
           mkdir jxl
           cd jxl
